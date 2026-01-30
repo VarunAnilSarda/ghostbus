@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Final Multi-Bus Live Tracker</title>
+  <style>
+    body { display: flex; margin: 0; height: 100vh; font-family: Arial; }
+    #leftPanel { width: 40%; overflow: auto; border-right: 1px solid #ccc; padding: 10px; }
+    #map { flex: 1; }
+    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+    th, td { border: 1px solid #ccc; padding: 6px; text-align: center; }
+    tr.highlight { background: yellow; }
+    .controls { margin-top: 10px; }
+    button, select, input[type=range] { margin: 5px; padding: 5px; }
+  </style>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+</head>
+<body>
+  <div id="leftPanel">
+    <h3>Upload Bus CSV (Live Tracking)</h3>
+    <input type="file" id="fileInput" accept=".csv" />
+    
+    <div class="controls">
+      <button onclick="play()">▶ Play</button>
+      <button onclick="pause()">⏸ Pause</button>
+      <button onclick="reset()">⏮ Reset</button>
+      <label>Speed: <input type="range" id="speedControl" min="500" max="3000" step="500" value="1500" /> <span id="speedVal">1500</span> ms</label>
+      <select id="busSelect" onchange="jumpToBus()"><option value="">--Jump to Bus--</option></select>
+    </div>
+    
+    <div id="csvTable"></div>
+  </div>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script>
+    let map = L.map('map').setView([13.0827, 80.2707], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+
+    let buses = {};
+    let colors = ["red","blue","green","purple","orange","brown","teal","magenta"];
+    let animationInterval = null;
+    let speed = 1500; // ms
+    let tableRows = [];
+
+    // Update speed label
+    document.getElementById("speedControl").addEventListener("input", function() {
+      speed = parseInt(this.value);
+      document.getElementById("speedVal").textContent = speed;
+      if (animationInterval) {
+        pause();
+        play();
+      }
+    });
+
+    // CSV Upload
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: function(results) {
+          let data = results.data;
+          setupBuses(data);
+          updateTable(data);
+        }
+      });
+    });
+
+    function setupBuses(data) {
+      let grouped = {};
+      data.forEach(row => {
+        if (!grouped[row.BusID]) grouped[row.BusID] = [];
+        grouped[row.BusID].push(row);
+      });
+
+      buses = {};
+      document.getElementById("busSelect").innerHTML = "<option value=''>--Jump to Bus--</option>";
+
+      let allBounds = [];
+
+      let colorIndex = 0;
+      for (let busID in grouped) {
+        let points = grouped[busID].map(r => [parseFloat(r.Latitude), parseFloat(r.Longitude)]);
+        let color = colors[colorIndex % colors.length];
+        colorIndex++;
+
+        let poly = L.polyline(points, {color: color}).addTo(map);
+        allBounds = allBounds.concat(points);
+
+        let marker = L.marker(points[0], {title: busID}).addTo(map).bindPopup(`${busID} - ${grouped[busID][0].Route}`);
+
+        buses[busID] = {points, index: 0, marker, color, route: grouped[busID][0].Route};
+
+        let option = document.createElement("option");
+        option.value = busID;
+        option.textContent = busID;
+        document.getElementById("busSelect").appendChild(option);
+      }
+
+      if(allBounds.length>0) map.fitBounds(allBounds);
+    }
+
+    function play() {
+      if (animationInterval) return;
+      animationInterval = setInterval(() => {
+        for (let busID in buses) {
+          let bus = buses[busID];
+          let nextIndex = (bus.index + 1) % bus.points.length;
+          let latlng = bus.points[nextIndex];
+
+          // Smooth transition
+          bus.marker.setLatLng(latlng);
+          bus.marker.setPopupContent(`${busID} - ${bus.route}`);
+          bus.index = nextIndex;
+
+          // Highlight table row
+          tableRows.forEach(tr => tr.classList.remove('highlight'));
+          let row = document.querySelector(`tr[data-busid="${busID}"]`);
+          if(row) row.classList.add('highlight');
+        }
+      }, speed);
+    }
+
+    function pause() {
+      clearInterval(animationInterval);
+      animationInterval = null;
+    }
+
+    function reset() {
+      pause();
+      for (let busID in buses) {
+        buses[busID].index = 0;
+        buses[busID].marker.setLatLng(buses[busID].points[0]);
+      }
+      tableRows.forEach(tr => tr.classList.remove('highlight'));
+    }
+
+    function jumpToBus() {
+      let busID = document.getElementById("busSelect").value;
+      if (busID && buses[busID]) {
+        let pt = buses[busID].points[buses[busID].index];
+        map.setView(pt, 14);
+        buses[busID].marker.openPopup();
+
+        tableRows.forEach(tr => tr.classList.remove('highlight'));
+        let row = document.querySelector(`tr[data-busid="${busID}"]`);
+        if(row) row.classList.add('highlight');
+      }
+    }
+
+    function updateTable(data) {
+      let html = "<table><tr>";
+      Object.keys(data[0]).forEach(h => html += `<th>${h}</th>`);
+      html += "</tr>";
+      data.forEach((row, i) => {
+        html += `<tr data-busid="${row.BusID}"><td>${row.BusID}</td><td>${row.Route}</td><td>${row.Latitude}</td><td>${row.Longitude}</td></tr>`;
+      });
+      html += "</table>";
+      document.getElementById("csvTable").innerHTML = html;
+
+      // Save table rows for highlighting
+      tableRows = Array.from(document.querySelectorAll("#csvTable tr")).slice(1);
+    }
+  </script>
+</body>
+</html>
+

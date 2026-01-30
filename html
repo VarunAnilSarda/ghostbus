@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ghostbus System</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        input, button { margin: 5px 0; padding: 8px; width: 200px; }
+        table { margin-top: 20px; border-collapse: collapse; width: 60%; }
+        th, td { border: 1px solid #000; padding: 8px; text-align: left; }
+    </style>
+</head>
+<body>
+    <h1>Ghostbus System</h1>
+
+    <h2>Add Bus</h2>
+    <form id="busForm">
+        <label>Route:</label><br>
+        <input type="text" id="route" required><br>
+
+        <label>Driver:</label><br>
+        <input type="text" id="driver" required><br>
+
+        <label>Capacity:</label><br>
+        <input type="number" id="capacity" required><br>
+
+        <button type="submit">Add Bus</button>
+    </form>
+
+    <h2>Bus List</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Route</th>
+                <th>Driver</th>
+                <th>Capacity</th>
+                <th>Action</th> <!-- This column is for Delete -->
+            </tr>
+        </thead>
+        <tbody id="busList">
+            <!-- Buses will appear here -->
+        </tbody>
+    </table>
+
+    <script>
+        const busForm = document.getElementById('busForm');
+        const busList = document.getElementById('busList');
+
+        busForm.addEventListener('submit', function(e) {
+            e.preventDefault(); // Stop page from reloading
+
+            const route = document.getElementById('route').value;
+            const driver = document.getElementById('driver').value;
+            const capacity = document.getElementById('capacity').value;
+
+            if(route && driver && capacity) {
+                // Create a row with a Delete button
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${route}</td>
+                    <td>${driver}</td>
+                    <td>${capacity}</td>
+                    <td><button class="deleteBtn">Delete</button></td>
+                `;
+                busList.appendChild(row);
+
+                // Make the Delete button remove the row
+                row.querySelector('.deleteBtn').addEventListener('click', function() {
+                    busList.removeChild(row);
+                });
+
+                busForm.reset(); // Clear the form
+            } else {
+                alert("Please fill all fields!");
+            }
+        });
+    </script>
+</body>
+</html>
